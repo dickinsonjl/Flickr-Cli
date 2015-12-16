@@ -18,7 +18,6 @@ def photoset_default_title(d):
     return os.path.basename(os.path.normpath(d))
 
 
-
 parser = OptionParser(version="1.0")
 
 parser.add_option("-d", "--directory", dest="directory",
@@ -83,5 +82,6 @@ if not flickr.token_valid(perms=u'write'):
     verifier = unicode(raw_input('Verifier code: '))
     flickr.get_access_token(verifier)
 
-upload = flickr_cli.DirectoryFlickrUpload(flickr)
+# upload = flickr_cli.DirectoryFlickrUpload(flickr)
+upload = flickr_cli.FamilyDirectoryUpload(flickr)
 upload(directory=directory, pset=photoset, tags=tags)

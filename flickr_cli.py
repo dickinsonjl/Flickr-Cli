@@ -2,16 +2,11 @@
 # !/usr/bin/env python
 import logging
 import os.path
+import ntpath
 import imghdr
 
 
 def valid_img(f):
-    """
-    Is this a valid image that we can use to upload?
-
-    :param f: str that indicates the file directory.
-    :return: boolean
-    """
     try:
         file_type = imghdr.what(f)
         supported_types = ['jpeg', 'gif', 'png']
@@ -27,12 +22,57 @@ def valid_img(f):
 
 
 def get_upload_size(files):
-    """
-    Size of all files in a list.
-    :param files:
-    :return:
-    """
     return sum([os.path.getsize(f) for f in files])
+
+
+class UploadedIndex(object):
+    """Used to keep track of which files have been uploaded"""
+
+    def __init__(self, directory):
+        self.directory = directory
+        self.uploadedFiles = []
+        self.check_index()
+
+    def check_index(self):
+        if not os.path.exists(self.directory):
+            print "directory bad!"
+        elif not os.path.exists(os.path.join(self.directory, ".flickrCli")):
+            print "no .flickrCli file found, will be created..."
+        else:
+            with open(os.path.join(self.directory, ".flickrCli"), "r") as f:
+                for line in f:
+                    full_path = os.path.join(self.directory, line.rstrip())
+                    file_name = ntpath.basename(full_path)
+                    if os.path.exists(full_path):
+                        # print "file previously uploaded: '%s'" % full_path
+                        self.uploadedFiles.append(file_name)
+                    else:
+                        print "'%s' not found in directory, although in uploaded index. Will remove from index. " % full_path
+            with open(os.path.join(self.directory, ".flickrCli"), 'w') as f:
+                self.uploadedFiles = self.unique_list(self.uploadedFiles)
+                for uploaded in self.uploadedFiles:
+                    f.write('%s\n' % uploaded)
+
+    def isfileindexed(self, file):
+        file_name = ntpath.basename(file)
+        if file_name in self.uploadedFiles:
+            print "'%s' found in uploaded index. Skipping." % file_name
+            return True
+        else:
+            # print "didn't find '%s' in index." % file_name
+            return False
+
+    def fileuploaded(self, file):
+        file_name = ntpath.basename(file)
+        if file_name not in self.uploadedFiles:
+            with open(os.path.join(self.directory, ".flickrCli"), 'a') as f:
+                print "adding file to upload index: '%s'" % file_name
+                f.write('%s\n' % file_name)
+
+    def unique_list(self, seq):
+        seen = set()
+        seen_add = seen.add
+        return [x for x in seq if not (x in seen or seen_add(x))]
 
 
 class UploadStatus(object):
@@ -52,10 +92,6 @@ class UploadStatus(object):
         self.file = self.get_current_file()
 
     def increment(self):
-        """
-        Select the next file in the list
-        :return:
-        """
         try:
             self._file_no += 1
             self.file = self.get_current_file()
@@ -64,18 +100,11 @@ class UploadStatus(object):
             return None
 
     def get_current_file(self):
-        """
-        What is the file that is currently selected?  Used to fill the self.file variable.
-        :return:
-        """
         return self.file_list[self._file_no]
 
     def uploaded_thus_far(self):
-        """
-        Total file size for files uploaded thus far.
-        :return:
-        """
-        return float(get_upload_size(self.file_list[0:self._file_no]))
+        return float(get_upload_size(
+            self.file_list[0:self._file_no]))
 
     def status(self, progress):
         """
@@ -115,11 +144,6 @@ class Photoset(object):
         ).find("photoset").attrib['id']
 
     def get_photoset_id(self, title):
-        """
-        Get photoset ID from flickr for a photoset with the title 'title'
-        :param title:
-        :return:
-        """
         self.photoset_id = self.exists(title) or self.create(title)
 
     def add_photos(self):
@@ -148,15 +172,23 @@ class AbstractDirectoryUpload(object):
         self.files = []
 
     def filter_directory_contents(self, d, f):
-        """Return true for files we don't want in our list (directories for now)"""
         return os.path.isdir(os.path.join(d, f))
 
     def get_directory_contents(self, d):
-        """Get list of all files in a directory.
-        TODO: Maybe this is better as a generator?"""
+        self.uIndex = UploadedIndex(d)
         self.files = [os.path.join(d, f)
                       for f in os.listdir(d)
                       if not self.filter_directory_contents(d, f)]
+
+    def checkfileindex(self):
+        new_files = []
+        for f in self.files:
+            if not self.uIndex.isfileindexed(f):
+                new_files.append(f)
+            else:
+                print ""
+                # print "filtering: '%s'" % f
+        self.files = new_files
 
     def prehook(self, **kwargs):
         pass
@@ -203,33 +235,33 @@ class DirectoryFlickrUpload(AbstractDirectoryUpload):
         self.photoset_name = pset
 
     def flickr_upload(self, f, **kwargs):
-        """
-        Actually uploads file to Flickr.
-        :param f:
-        :param kwargs:
-        :return:
-        """
-        print "Uploading %s" % f
-        return self.flickr.upload(filename=f, tags=self.tags,
-                                  is_public=kwargs.get('is_public', 0),
-                                  is_family=kwargs.get('is_family', 0))
+        if not self.uIndex.isfileindexed(f):
+            print "Uploading %s" % f
+            f_response = self.flickr.upload(filename=f, tags=self.tags, is_public=kwargs.get('is_public', 0), is_family=kwargs.get('is_family', 0))
+            # for (r) in f_response:
+            #     if r.attrib['stat'] == "ok":
+            # We will assume the file upload was successful for now. @TODO check attrib['stat']=="ok"
+            self.uIndex.fileuploaded(f)
+            return f_response
+        else:
+            print "Skipping %s" % f
+            return
 
     def upload(self):
+        self.checkfileindex()
         self.responses = [(self.flickr_upload(f, is_public=0, is_family=0), f) for f in self.files]
 
     def parse_response(self):
-        """
-        Handles response from Flickr API.
-        :return:
-        """
         self.ids = [r.find("photoid").text for (r, f) in self.responses if r.attrib['stat'] == "ok"]
         self.failed_uploads = [f for (r, f) in self.responses if r.attrib['stat'] != "ok"]
         self.successful_uploads_count = len(self.ids)
         self.failed_uploads_count = len(self.failed_uploads)
 
     def posthook(self, **kwargs):
-        self.create_photoset(self.photoset_name, self.ids)
+        if len(self.ids) > 0:
+            self.create_photoset(self.photoset_name, self.ids)
         self.handle_failed_uploads()
+        print "Completed directory: %s" % self.directory
 
     def handle_failed_uploads(self):
         pass
