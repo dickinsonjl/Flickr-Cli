@@ -44,10 +44,11 @@ class UploadedIndex(object):
                     full_path = os.path.join(self.directory, line.rstrip())
                     file_name = ntpath.basename(full_path)
                     if os.path.exists(full_path):
-                        # print "file previously uploaded: '%s'" % full_path
                         self.uploadedFiles.append(file_name)
                     else:
-                        print "'%s' not found in directory, although in uploaded index. Will remove from index. " % full_path
+                        print "'%s' not found in directory. Will remove from index. " % full_path
+                if len(self.uploadedFiles) > 0:
+                    print "Skipping %s images already uploaded." % len(self.uploadedFiles)
             with open(os.path.join(self.directory, ".flickrCli"), 'w') as f:
                 self.uploadedFiles = self.unique_list(self.uploadedFiles)
                 for uploaded in self.uploadedFiles:
@@ -56,10 +57,8 @@ class UploadedIndex(object):
     def isfileindexed(self, file):
         file_name = ntpath.basename(file)
         if file_name in self.uploadedFiles:
-            print "'%s' found in uploaded index. Skipping." % file_name
             return True
         else:
-            # print "didn't find '%s' in index." % file_name
             return False
 
     def fileuploaded(self, file):
@@ -186,8 +185,7 @@ class AbstractDirectoryUpload(object):
             if not self.uIndex.isfileindexed(f):
                 new_files.append(f)
             else:
-                print ""
-                # print "filtering: '%s'" % f
+                pass
         self.files = new_files
 
     def prehook(self, **kwargs):
@@ -238,8 +236,6 @@ class DirectoryFlickrUpload(AbstractDirectoryUpload):
         if not self.uIndex.isfileindexed(f):
             print "Uploading %s" % f
             f_response = self.flickr.upload(filename=f, tags=self.tags, is_public=kwargs.get('is_public', 0), is_family=kwargs.get('is_family', 0))
-            # for (r) in f_response:
-            #     if r.attrib['stat'] == "ok":
             # We will assume the file upload was successful for now. @TODO check attrib['stat']=="ok"
             self.uIndex.fileuploaded(f)
             return f_response
@@ -249,6 +245,7 @@ class DirectoryFlickrUpload(AbstractDirectoryUpload):
 
     def upload(self):
         self.checkfileindex()
+        print "Uploading %s images..." % len(self.files)
         self.responses = [(self.flickr_upload(f, is_public=0, is_family=0), f) for f in self.files]
 
     def parse_response(self):
