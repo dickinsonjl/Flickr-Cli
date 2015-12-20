@@ -4,6 +4,7 @@ import logging
 import os.path
 import ntpath
 import imghdr
+import time
 
 
 def valid_img(f):
@@ -235,10 +236,15 @@ class DirectoryFlickrUpload(AbstractDirectoryUpload):
     def flickr_upload(self, f, **kwargs):
         if not self.uIndex.isfileindexed(f):
             print "Uploading %s" % f
-            f_response = self.flickr.upload(filename=f, tags=self.tags, is_public=kwargs.get('is_public', 0), is_family=kwargs.get('is_family', 0))
-            # We will assume the file upload was successful for now. @TODO check attrib['stat']=="ok"
-            self.uIndex.fileuploaded(f)
-            return f_response
+            try:
+                f_response = self.flickr.upload(filename=f, tags=self.tags, is_public=kwargs.get('is_public', 0), is_family=kwargs.get('is_family', 0))
+            except Exception:
+                print "Failed to upload: %s" % f
+                time.sleep(10)
+            else:
+                # We will assume the file upload was successful for now. @TODO check attrib['stat']=="ok"
+                self.uIndex.fileuploaded(f)
+                return f_response
         else:
             print "Skipping %s" % f
             return
