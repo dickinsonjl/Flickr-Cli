@@ -3,3 +3,4 @@
 
 flickrapi >= 2.0
 requests[security]
+python-magic

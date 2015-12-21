@@ -5,12 +5,22 @@ import os.path
 import ntpath
 import imghdr
 import time
+import magic
 
 
 def valid_img(f):
+    supported_file_mimes = ['image/jpeg', 'image/gif', 'image/png', 'video/quicktime']
+    try:
+        mg = magic.Magic(mime=True)
+        mime_type = mg.from_file(f)
+        if mime_type in supported_file_mimes:
+            return True
+    except Exception as e:
+        print "Magic Exception"
+        # magic not available etc.
+    supported_types = ['jpeg', 'gif', 'png']
     try:
         file_type = imghdr.what(f)
-        supported_types = ['jpeg', 'gif', 'png']
         if file_type in supported_types:
             return True
     except AttributeError as e:
@@ -240,6 +250,7 @@ class DirectoryFlickrUpload(AbstractDirectoryUpload):
                 f_response = self.flickr.upload(filename=f, tags=self.tags, is_public=kwargs.get('is_public', 0), is_family=kwargs.get('is_family', 0))
             except Exception:
                 print "Failed to upload: %s" % f
+                self.failed_uploads.append(f)
                 time.sleep(10)
             else:
                 # We will assume the file upload was successful for now. @TODO check attrib['stat']=="ok"
@@ -267,7 +278,9 @@ class DirectoryFlickrUpload(AbstractDirectoryUpload):
         print "Completed directory: %s" % self.directory
 
     def handle_failed_uploads(self):
-        pass
+        if len(self.failed_uploads) > 0:
+            print "Failed to upload %s images." % len(self.failed_uploads)
+            # TODO: retry failed uploads?
 
 
 class PublicDirectoryUpload(DirectoryFlickrUpload):
