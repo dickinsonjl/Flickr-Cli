@@ -131,27 +131,34 @@ class Photoset(object):
     Arguments
     flickr: A FlickrAPI object that grants access to your flickr API.
     """
-    def __init__(self, flickr):
+    def __init__(self, flickr, pset):
         self.flickr = flickr
         self.photoset_id = ''
+        self.photoset_name = pset
 
     def exists(self, title):
         """Returns Photoset ID that matches title, if such a set exists.  Otherwise false."""
-        # TODO: What happens if there is no photoset in your account?
-        photosets = self.flickr.photosets_getList().find("photosets").findall("photoset")
+        try:
+            photosets = self.flickr.photosets_getList().find("photosets").findall("photoset")
+        except:
+            return False
 
         for p in photosets:
             if p.find("title").text == title:
+                print "Found existing photoset '%s', id: %s" % (title, p.attrib["id"])
                 return p.attrib["id"]
         return False
 
     def create(self, title):
         """Returns Photoset and returns ID."""
-        return self.flickr.photosets_create(
+        photoset_id = self.flickr.photosets_create(
             method='flickr.photosets.create',
             title=title,
             primary_photo_id=self.primary_photo_id
         ).find("photoset").attrib['id']
+        print "Created new photoset '%s', id: %s" % (title, photoset_id)
+        # if we set the primary photo, we don't need to add the photo to the set
+        self.photo_ids.remove(self.primary_photo_id)
 
     def get_photoset_id(self, title):
         self.photoset_id = self.exists(title) or self.create(title)
@@ -162,11 +169,19 @@ class Photoset(object):
             photoset_id=self.photoset_id,
             photo_id=i) for i in self.photo_ids]
 
+    def add_single_photo(self, pid):
+        """Adds one photo id to photoset on Flickr."""
+        self.primary_photo_id = pid
+        self.photo_ids = [pid]
+        if self.photoset_id == '':
+            self.get_photoset_id(self.photoset_name)
+        # print "Adding photo id '%s' to photoset '%s' (id:%s)" % (pid, self.photoset_name, self.photoset_id)
+        return self.add_photos()
+
     def __call__(self, title, ids, primary_photo_id=0):
         """Generates photoset based on information passed in call"""
         self.primary_photo_id = primary_photo_id or ids[0]
         self.photo_ids = ids
-        self.photo_ids.remove(self.primary_photo_id)
         self.get_photoset_id(title)
         if self.photo_ids:
             response = self.add_photos()
@@ -233,7 +248,6 @@ class DirectoryFlickrUpload(AbstractDirectoryUpload):
         self.responses = []
         self.failed_uploads = []
         self.flickr = flickr
-        self.create_photoset = Photoset(flickr)
 
     def filter_directory_contents(self, d, f):
         return not valid_img(os.path.join(d, f))
@@ -242,6 +256,7 @@ class DirectoryFlickrUpload(AbstractDirectoryUpload):
         self.ids = []
         self.tags = ", ".join(tags)
         self.photoset_name = pset
+        self.create_photoset = Photoset(self.flickr, pset)
 
     def flickr_upload(self, f, **kwargs):
         if not self.uIndex.isfileindexed(f):
@@ -255,6 +270,9 @@ class DirectoryFlickrUpload(AbstractDirectoryUpload):
             else:
                 # We will assume the file upload was successful for now. @TODO check attrib['stat']=="ok"
                 self.uIndex.fileuploaded(f)
+                photo_id = f_response.find("photoid").text
+                if photo_id != '':
+                    self.create_photoset.add_single_photo(photo_id)
                 return f_response
         else:
             print "Skipping %s" % f
@@ -266,14 +284,19 @@ class DirectoryFlickrUpload(AbstractDirectoryUpload):
         self.responses = [(self.flickr_upload(f, is_public=0, is_family=0), f) for f in self.files]
 
     def parse_response(self):
-        self.ids = [r.find("photoid").text for (r, f) in self.responses if r.attrib['stat'] == "ok"]
-        self.failed_uploads = [f for (r, f) in self.responses if r.attrib['stat'] != "ok"]
+        for (r, f) in self.responses:
+            photo_id = r.find("photoid").text
+            if str(photo_id) != '':
+                if r.attrib['stat'] == "ok":
+                    self.ids.append(photo_id)
+                else:
+                    self.failed_uploads.append(f)
+        # self.ids = [r.find("photoid").text for (r, f) in self.responses if r.attrib['stat'] == "ok"]
+        # self.failed_uploads = [f for (r, f) in self.responses if r.attrib['stat'] != "ok"]
         self.successful_uploads_count = len(self.ids)
         self.failed_uploads_count = len(self.failed_uploads)
 
     def posthook(self, **kwargs):
-        if len(self.ids) > 0:
-            self.create_photoset(self.photoset_name, self.ids)
         self.handle_failed_uploads()
         print "Completed directory: %s" % self.directory
 
