@@ -166,9 +166,13 @@ class Photoset(object):
 
     def add_photos(self):
         """Adds photo ids to photoset on Flickr."""
-        return [self.flickr.photosets_addPhoto(
-            photoset_id=self.photoset_id,
-            photo_id=i) for i in self.photo_ids]
+        try:
+            response = [self.flickr.photosets_addPhoto(
+                photoset_id=self.photoset_id,
+                photo_id=i) for i in self.photo_ids]
+            return response
+        except:
+            return False
 
     def add_single_photo(self, pid):
         """Adds one photo id to photoset on Flickr."""
