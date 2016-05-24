@@ -159,6 +159,7 @@ class Photoset(object):
         print "Created new photoset '%s', id: %s" % (title, photoset_id)
         # if we set the primary photo, we don't need to add the photo to the set
         self.photo_ids.remove(self.primary_photo_id)
+        return photoset_id
 
     def get_photoset_id(self, title):
         self.photoset_id = self.exists(title) or self.create(title)
