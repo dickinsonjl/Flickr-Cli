@@ -159,15 +159,20 @@ class Photoset(object):
         print "Created new photoset '%s', id: %s" % (title, self.photoset_id)
         # if we set the primary photo, we don't need to add the photo to the set
         self.photo_ids.remove(self.primary_photo_id)
+        return self.photoset_id
 
     def get_photoset_id(self, title):
         self.photoset_id = self.exists(title) or self.create(title)
 
     def add_photos(self):
         """Adds photo ids to photoset on Flickr."""
-        return [self.flickr.photosets_addPhoto(
-            photoset_id=self.photoset_id,
-            photo_id=i) for i in self.photo_ids]
+        try:
+            response = [self.flickr.photosets_addPhoto(
+                photoset_id=self.photoset_id,
+                photo_id=i) for i in self.photo_ids]
+            return response
+        except:
+            return False
 
     def add_single_photo(self, pid):
         """Adds one photo id to photoset on Flickr."""
